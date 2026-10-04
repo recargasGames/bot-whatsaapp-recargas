@@ -4,9 +4,20 @@ const qrcode = require('qrcode');
 const express = require('express');
 
 const app = express();
+
+// ✅ CORS — PERMITE QUE TU PÁGINA SE CONECTE
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 app.use(express.json());
 
-const API_SECRET = 'pon-tu-clave-secreta-aqui-12345'; // Cámbiala!
+// ⚠️ CAMBIA ESTA CLAVE POR UNA TUYA!
+const API_SECRET = 'pon-tu-clave-secreta-aqui-12345';
 
 let sock;
 let qrCodeData = null;
@@ -38,6 +49,7 @@ app.get('/', (req, res) => {
     `);
 });
 
+// ========== CONECTAR WHATSAPP ==========
 async function conectar() {
     const { state, saveCreds } = await useMultiFileAuthState('auth');
 
@@ -52,17 +64,17 @@ async function conectar() {
         const { connection, qr } = update;
 
         if (qr) {
-            // Convertir QR a imagen base64 para la web
             qrCodeData = await qrcode.toDataURL(qr, { scale: 8 });
-            console.log('\n' + '='.repeat(50));
-            console.log('📲 ABRE ESTA PÁGINA PARA ESCANEAR:');
-            console.log('👉 ' + process.env.RENDER_EXTERNAL_URL || 'TU_URL' + '\n');
-            console.log('='.repeat(50) + '\n');
+            console.log('\n' + '═'.repeat(55));
+            console.log('📲 ENTRA A TU PÁGINA PARA ESCANEAR EL QR:');
+            console.log('👉 ' + (process.env.RENDER_EXTERNAL_URL || 'Tu URL en Render') + '\n');
+            console.log('═'.repeat(55) + '\n');
         }
 
         if (connection === 'open') {
             qrCodeData = null;
-            console.log('\n✅ ✅ ✅ CONECTADO Y LISTO ✅ ✅ ✅\n');
+            console.log('\n✅ ✅ ✅ BOT CONECTADO Y LISTO ✅ ✅ ✅');
+            console.log('   RecargasGames 🎮 — Envío automático activo\n');
         }
 
         if (connection === 'close') {
@@ -73,20 +85,28 @@ async function conectar() {
     });
 }
 
-// ========== ENDPOINT DE ENVÍO ==========
+// ========== ENDPOINT — ENVIAR MENSAJE ==========
 app.post('/enviar-producto', async (req, res) => {
     const { numero_whatsapp, producto, datos, clave_secreta } = req.body;
 
-    if (clave_secreta !== API_SECRET) return res.status(403).json({ error: 'Clave inválida' });
-    if (!sock) return res.status(503).json({ error: 'Bot no conectado' });
-    if (!numero_whatsapp || !producto) return res.status(400).json({ error: 'Faltan datos' });
+    if (clave_secreta !== API_SECRET) {
+        return res.status(403).json({ error: 'Clave inválida' });
+    }
+    if (!sock) {
+        return res.status(503).json({ error: 'Bot no conectado — Escanea el QR primero' });
+    }
+    if (!numero_whatsapp || !producto) {
+        return res.status(400).json({ error: 'Faltan datos' });
+    }
 
     try {
+        // Formatear número a Venezuela +58
         let num = numero_whatsapp.replace(/\D/g, '');
         if (num.startsWith('0')) num = num.slice(1);
         if (!num.startsWith('58')) num = '58' + num;
         num += '@s.whatsapp.net';
 
+        // Mensaje según producto
         let mensaje = '';
         if (producto.includes('Netflix')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
@@ -97,7 +117,7 @@ app.post('/enviar-producto', async (req, res) => {
 🔐 Contraseña: ${datos.clave || '---'}
 📅 Vencimiento: ${datos.vencimiento || '30 días'}
 
-✅ ¡Disfrútalo!`;
+✅ ¡Disfrútalo! Gracias por confiar en nosotros.`;
         }
         else if (producto.includes('Disney')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
@@ -120,7 +140,7 @@ ${datos.codigo || '---'}
 
 ✅ Canjea en: https://roblox.com/redeem
 
-Gracias! 🎮`;
+Gracias por tu compra! 🎮`;
         }
         else {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
@@ -129,20 +149,22 @@ Gracias! 🎮`;
 
 ${JSON.stringify(datos, null, 2)}
 
-✅ ¡Gracias!`;
+✅ ¡Gracias por tu compra!`;
         }
 
         await sock.sendMessage(num, { text: mensaje });
-        res.json({ ok: true, mensaje: 'Enviado ✅' });
-        console.log(`✅ Enviado a ${numero_whatsapp}`);
+        res.json({ ok: true, mensaje: 'Enviado correctamente ✅' });
+        console.log(`✅ Enviado a ${numero_whatsapp} — ${producto}`);
+
     } catch (error) {
-        res.status(500).json({ error: error.message });
-        console.error('❌', error);
+        console.error('❌ Error:', error);
+        res.status(500).json({ error: 'No se pudo enviar: ' + error.message });
     }
 });
 
+// ========== INICIAR SERVIDOR ==========
 const PUERTO = process.env.PORT || 3000;
 app.listen(PUERTO, async () => {
-    console.log(`🌐 Servidor activo`);
+    console.log(`🌐 Servidor corriendo en el puerto ${PUERTO}`);
     await conectar();
 });
