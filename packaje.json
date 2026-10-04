@@ -1,0 +1,14 @@
+{
+  "name": "bot-whatsapp-recargas",
+  "version": "1.0.0",
+  "description": "Bot de envío automático para RecargasGames",
+  "main": "bot.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  },
+  "scripts": {
+    "start": "node bot.js"
+  }
+}
