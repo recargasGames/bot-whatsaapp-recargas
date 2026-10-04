@@ -3,38 +3,37 @@ const qrcode = require('qrcode-terminal');
 const express = require('express');
 const app = express();
 
-// ⚠️ CLAVE SECRETA — Cámbiala por una tuya en producción!
-const API_SECRET = 'pon-una-clave-segura-aqui-12345';
+const API_SECRET = 'pon-tu-clave-secreta-aqui-12345';
 
 app.use(express.json());
 
+// ✅ Configuración para Render SIN necesitar Chrome
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        headless: true
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+        ],
+        headless: 'new',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     }
 });
 
-// Mostrar QR para vincular
 client.on('qr', qr => {
-    console.log('\n=========================================');
-    console.log('📲 ESCANEA ESTE QR CON TU WHATSAPP');
-    console.log('=========================================\n');
+    console.log('\n📲 ESCANEA ESTE QR CON WHATSAPP:\n');
     qrcode.generate(qr, { small: true });
-    console.log('\n=========================================\n');
 });
 
 client.on('ready', () => {
-    console.log('\n✅ BOT CONECTADO Y LISTO — RecargasGames 🎮\n');
-    console.log('Endpoint listo: POST /enviar-producto\n');
+    console.log('\n✅ BOT CONECTADO — RecargasGames 🎮\n');
 });
 
-// ========== ENDPOINT — TU PASARELA LLAMA AQUÍ ==========
+// ========== ENDPOINT PARA ENVIAR PRODUCTOS ==========
 app.post('/enviar-producto', async (req, res) => {
     const { numero_whatsapp, producto, datos, clave_secreta } = req.body;
 
-    // Verificar clave secreta
     if (clave_secreta !== API_SECRET) {
         return res.status(403).json({ error: 'Clave inválida' });
     }
@@ -44,7 +43,6 @@ app.post('/enviar-producto', async (req, res) => {
     }
 
     try {
-        // Limpiar número y agregar código de país Venezuela +58
         let numeroLimpio = numero_whatsapp.replace(/\D/g, '');
         if (numeroLimpio.startsWith('0')) numeroLimpio = numeroLimpio.slice(1);
         if (!numeroLimpio.startsWith('58')) numeroLimpio = '58' + numeroLimpio;
@@ -54,9 +52,7 @@ app.post('/enviar-producto', async (req, res) => {
             return res.status(404).json({ error: 'Número no tiene WhatsApp' });
         }
 
-        // Mensaje según producto
         let mensaje = '';
-
         if (producto.includes('Netflix')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
 
@@ -77,29 +73,17 @@ app.post('/enviar-producto', async (req, res) => {
 🔐 Contraseña: ${datos.clave || '---'}
 📅 Vencimiento: ${datos.vencimiento || '30 días'}
 
-✅ ¡Disfrútalo! Gracias por confiar en nosotros.`;
+✅ ¡Disfrútalo!`;
         }
         else if (producto.includes('Roblox') || producto.includes('PIN')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
 
 🎁 ${producto}
 
-🔢 Código/PIN:
-${datos.codigo || '---'}
-
-✅ Canjea aquí: https://roblox.com/redeem
-
-Gracias por tu compra! 🎮`;
-        }
-        else if (producto.includes('PlayStation')) {
-            mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
-
-🎮 ${producto}
-
 🔢 Código:
 ${datos.codigo || '---'}
 
-✅ Canjea en PlayStation Store
+✅ Canjea en: https://roblox.com/redeem
 
 Gracias por tu compra! 🎮`;
         }
@@ -108,17 +92,14 @@ Gracias por tu compra! 🎮`;
 
 📦 ${producto}
 
-📋 Datos:
 ${JSON.stringify(datos, null, 2)}
 
 ✅ ¡Gracias por tu compra!`;
         }
 
-        // Enviar mensaje
         await client.sendMessage(id._serialized, mensaje);
-        
-        res.json({ ok: true, mensaje: 'Enviado correctamente ✅' });
-        console.log(`✅ Enviado a ${numeroLimpio} — ${producto}`);
+        res.json({ ok: true, mensaje: 'Enviado ✅' });
+        console.log(`✅ Enviado a ${numeroLimpio}`);
 
     } catch (error) {
         console.error('❌ Error:', error);
@@ -126,10 +107,9 @@ ${JSON.stringify(datos, null, 2)}
     }
 });
 
-// Iniciar servidor
 const PUERTO = process.env.PORT || 3000;
 app.listen(PUERTO, () => {
-    console.log(`🌐 Servidor corriendo en el puerto ${PUERTO}`);
+    console.log(`🌐 Servidor en puerto ${PUERTO}`);
 });
 
 client.initialize();
