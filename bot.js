@@ -6,11 +6,11 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-const API_SECRET = 'pon-tu-clave-secreta-aqui-12345'; // Cámbiala!
+// ⚠️ CAMBIA ESTA CLAVE POR UNA TUYA!
+const API_SECRET = 'pon-tu-clave-secreta-aqui-12345';
 
-let sock; // Conexión global
+let sock;
 
-// ========== CONECTAR WHATSAPP ==========
 async function conectar() {
     const { state, saveCreds } = await useMultiFileAuthState('auth');
 
@@ -24,23 +24,39 @@ async function conectar() {
     sock.ev.on('connection.update', (update) => {
         const { connection, qr } = update;
 
+        // ========== MOSTRAR QR BIEN GRANDE ==========
         if (qr) {
-            console.log('\n📲 ESCANEA ESTE QR CON WHATSAPP:\n');
-            qrcode.generate(qr, { small: true });
+            console.log('\n');
+            console.log('╔══════════════════════════════════════╗');
+            console.log('║     📲 ESCANEA ESTE CÓDIGO QR        ║');
+            console.log('║   con WhatsApp en tu teléfono        ║');
+            console.log('╚══════════════════════════════════════╝');
+            console.log('\n');
+            qrcode.generate(qr, { small: false }); // false = más grande
+            console.log('\n');
+            console.log('═════════════════════════════════════════');
+            console.log('👉 Abre WhatsApp → Dispositivos vinculados');
+            console.log('═════════════════════════════════════════\n');
         }
 
         if (connection === 'open') {
-            console.log('\n✅ BOT CONECTADO Y LISTO — RecargasGames 🎮\n');
+            console.log('\n✅ ✅ ✅ BOT CONECTADO Y LISTO ✅ ✅ ✅');
+            console.log('   RecargasGames 🎮 — Envío automático activo\n');
         }
 
         if (connection === 'close') {
             const reconectar = update.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (reconectar) conectar();
+            console.log(`\n⚠️ Desconectado — Reintentando...`);
+            if (reconectar) {
+                setTimeout(conectar, 3000);
+            } else {
+                console.log('❌ Sesión cerrada manualmente — Borra la carpeta "auth" para escanear de nuevo');
+            }
         }
     });
 }
 
-// ========== ENDPOINT — TU PASARELA LLAMA AQUÍ ==========
+// ========== ENDPOINT PARA ENVIAR ==========
 app.post('/enviar-producto', async (req, res) => {
     const { numero_whatsapp, producto, datos, clave_secreta } = req.body;
 
@@ -48,20 +64,18 @@ app.post('/enviar-producto', async (req, res) => {
         return res.status(403).json({ error: 'Clave inválida' });
     }
     if (!sock) {
-        return res.status(503).json({ error: 'Bot no conectado' });
+        return res.status(503).json({ error: 'Bot no conectado — Escanea el QR primero' });
     }
     if (!numero_whatsapp || !producto) {
         return res.status(400).json({ error: 'Faltan datos' });
     }
 
     try {
-        // Limpiar número → formato Venezuela +58
         let num = numero_whatsapp.replace(/\D/g, '');
         if (num.startsWith('0')) num = num.slice(1);
         if (!num.startsWith('58')) num = '58' + num;
         num += '@s.whatsapp.net';
 
-        // Mensaje según producto
         let mensaje = '';
         if (producto.includes('Netflix')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
@@ -107,20 +121,18 @@ ${JSON.stringify(datos, null, 2)}
 ✅ ¡Gracias por tu compra!`;
         }
 
-        // Enviar mensaje
         await sock.sendMessage(num, { text: mensaje });
-        res.json({ ok: true, mensaje: 'Enviado ✅' });
-        console.log(`✅ Enviado a ${numero_whatsapp}`);
+        res.json({ ok: true, mensaje: 'Enviado correctamente ✅' });
+        console.log(`✅ Mensaje enviado a ${numero_whatsapp} — ${producto}`);
 
     } catch (error) {
-        console.error('❌ Error:', error);
-        res.status(500).json({ error: 'No se pudo enviar' });
+        console.error('❌ Error al enviar:', error);
+        res.status(500).json({ error: 'No se pudo enviar: ' + error.message });
     }
 });
 
-// Iniciar todo
 const PUERTO = process.env.PORT || 3000;
 app.listen(PUERTO, async () => {
-    console.log(`🌐 Servidor en puerto ${PUERTO}`);
+    console.log(`🌐 Servidor corriendo en el puerto ${PUERTO}`);
     await conectar();
 });
