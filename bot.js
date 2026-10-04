@@ -1,57 +1,67 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const makeWASocket = require('@whiskeysockets/baileys').default;
+const { useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
+
 const app = express();
-
-const API_SECRET = 'pon-tu-clave-secreta-aqui-12345';
-
 app.use(express.json());
 
-// ✅ Configuración para Render SIN necesitar Chrome
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
-        ],
-        headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-    }
-});
+const API_SECRET = 'pon-tu-clave-secreta-aqui-12345'; // Cámbiala!
 
-client.on('qr', qr => {
-    console.log('\n📲 ESCANEA ESTE QR CON WHATSAPP:\n');
-    qrcode.generate(qr, { small: true });
-});
+let sock; // Conexión global
 
-client.on('ready', () => {
-    console.log('\n✅ BOT CONECTADO — RecargasGames 🎮\n');
-});
+// ========== CONECTAR WHATSAPP ==========
+async function conectar() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth');
 
-// ========== ENDPOINT PARA ENVIAR PRODUCTOS ==========
+    sock = await makeWASocket({
+        auth: state,
+        printQRInTerminal: false
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, qr } = update;
+
+        if (qr) {
+            console.log('\n📲 ESCANEA ESTE QR CON WHATSAPP:\n');
+            qrcode.generate(qr, { small: true });
+        }
+
+        if (connection === 'open') {
+            console.log('\n✅ BOT CONECTADO Y LISTO — RecargasGames 🎮\n');
+        }
+
+        if (connection === 'close') {
+            const reconectar = update.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (reconectar) conectar();
+        }
+    });
+}
+
+// ========== ENDPOINT — TU PASARELA LLAMA AQUÍ ==========
 app.post('/enviar-producto', async (req, res) => {
     const { numero_whatsapp, producto, datos, clave_secreta } = req.body;
 
     if (clave_secreta !== API_SECRET) {
         return res.status(403).json({ error: 'Clave inválida' });
     }
-
+    if (!sock) {
+        return res.status(503).json({ error: 'Bot no conectado' });
+    }
     if (!numero_whatsapp || !producto) {
         return res.status(400).json({ error: 'Faltan datos' });
     }
 
     try {
-        let numeroLimpio = numero_whatsapp.replace(/\D/g, '');
-        if (numeroLimpio.startsWith('0')) numeroLimpio = numeroLimpio.slice(1);
-        if (!numeroLimpio.startsWith('58')) numeroLimpio = '58' + numeroLimpio;
+        // Limpiar número → formato Venezuela +58
+        let num = numero_whatsapp.replace(/\D/g, '');
+        if (num.startsWith('0')) num = num.slice(1);
+        if (!num.startsWith('58')) num = '58' + num;
+        num += '@s.whatsapp.net';
 
-        const id = await client.getNumberId(numeroLimpio + '@c.us');
-        if (!id) {
-            return res.status(404).json({ error: 'Número no tiene WhatsApp' });
-        }
-
+        // Mensaje según producto
         let mensaje = '';
         if (producto.includes('Netflix')) {
             mensaje = `🎉 ¡Compra confirmada! RecargasGames 🎮
@@ -97,9 +107,10 @@ ${JSON.stringify(datos, null, 2)}
 ✅ ¡Gracias por tu compra!`;
         }
 
-        await client.sendMessage(id._serialized, mensaje);
+        // Enviar mensaje
+        await sock.sendMessage(num, { text: mensaje });
         res.json({ ok: true, mensaje: 'Enviado ✅' });
-        console.log(`✅ Enviado a ${numeroLimpio}`);
+        console.log(`✅ Enviado a ${numero_whatsapp}`);
 
     } catch (error) {
         console.error('❌ Error:', error);
@@ -107,9 +118,9 @@ ${JSON.stringify(datos, null, 2)}
     }
 });
 
+// Iniciar todo
 const PUERTO = process.env.PORT || 3000;
-app.listen(PUERTO, () => {
+app.listen(PUERTO, async () => {
     console.log(`🌐 Servidor en puerto ${PUERTO}`);
+    await conectar();
 });
-
-client.initialize();
